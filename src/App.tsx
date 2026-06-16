@@ -8,6 +8,7 @@ import Upload from "./pages/Upload";
 import Query from "./pages/Query";
 import Experiments from "./pages/Experiments";
 import Dashboard from "./pages/Dashboard";
+import Chat from "./pages/Chat";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -21,10 +22,10 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/upload" element={<Upload />} />
+          <Route path="/chat" element={<Chat />} />
           <Route path="/query" element={<Query />} />
           <Route path="/experiments" element={<Experiments />} />
           <Route path="/dashboard" element={<Dashboard />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
