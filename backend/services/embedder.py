@@ -1,100 +1,86 @@
 # backend/services/embedder.py
 import os
-from typing import List, Dict
 import threading
-
+from typing import List, Dict
 import numpy as np
-from sentence_transformers import SentenceTransformer
+from dotenv import load_dotenv
+import google.generativeai as genai
 
-# --------------------------
-# Configuration
-# --------------------------
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-# For embeddings, we use SentenceTransformers since Groq doesn't provide embedding API
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+load_dotenv()
 
-_lock = threading.Lock()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "models/embedding-001")
+
+genai.configure(api_key=GEMINI_API_KEY)
+
+_embedder_lock = threading.Lock()
 
 
 class EmbeddingService:
     def __init__(self, model_name: str = None):
         self.model = model_name or EMBEDDING_MODEL
         self.cache: Dict[str, List[float]] = {}
+        if not GEMINI_API_KEY:
+            print("GEMINI_API_KEY not set")
+        else:
+            print(f"Embedding service ready: {self.model}")
 
-        # Load SentenceTransformer model
-        try:
-            self._st_model = SentenceTransformer(self.model)
-            print(f"✓ Loaded embedding model: {self.model}")
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to load SentenceTransformer model '{self.model}'. "
-                f"Error: {e}\n"
-                f"Make sure sentence-transformers is installed: pip install sentence-transformers"
-            )
-
-    # --------------------------------------
-    # SentenceTransformer Embedding
-    # --------------------------------------
-    def _st_embed(self, texts: List[str]) -> List[List[float]]:
-        vecs = self._st_model.encode(texts, show_progress_bar=False, convert_to_numpy=True)
-        out = []
-        for v in vecs:
-            n = np.linalg.norm(v)
-            out.append((v / n).tolist() if n > 0 else v.tolist())
-        return out
-
-    # --------------------------------------
-    # Single Text Embedding
-    # --------------------------------------
     def embed_text(self, text: str) -> List[float]:
-        key = f"{self.model}:{text[:200]}"
+        cache_key = f"{self.model}:{text[:200]}"
+        if cache_key in self.cache:
+            return self.cache[cache_key]
 
-        if key in self.cache:
-            return self.cache[key]
-
-        # Get embedding from SentenceTransformer
-        vec = self._st_embed([text])[0]
-
-        arr = np.array(vec, dtype=float)
-        n = np.linalg.norm(arr)
-        arr = arr / n if n > 0 else arr
-
-        vec = arr.tolist()
-        self.cache[key] = vec
-        return vec
-
-    # --------------------------------------
-    # Batch Embeddings
-    # --------------------------------------
-    def embed_batch(self, texts: List[str], batch_size: int = 100) -> List[List[float]]:
-        out = []
-
-        for i in range(0, len(texts), batch_size):
-            batch = texts[i : i + batch_size]
-            emb = self._st_embed(batch)
-
-            for v in emb:
-                arr = np.array(v, dtype=float)
-                n = np.linalg.norm(arr)
-                out.append((arr / n).tolist() if n > 0 else arr.tolist())
-
-        return out
+        try:
+            result = genai.embed_content(
+                model=self.model,
+                content=text,
+                task_type="retrieval_document"
+            )
+            vec = result["embedding"]
+            arr = np.array(vec, dtype=float)
+            n = np.linalg.norm(arr)
+            vec = (arr / n).tolist() if n > 0 else arr.tolist()
+            self.cache[cache_key] = vec
+            return vec
+        except Exception as e:
+            print(f"Embedding error: {e}")
+            raise
 
     def embed_query(self, query: str) -> List[float]:
-        return self.embed_text(query)
+        try:
+            result = genai.embed_content(
+                model=self.model,
+                content=query,
+                task_type="retrieval_query"
+            )
+            vec = result["embedding"]
+            arr = np.array(vec, dtype=float)
+            n = np.linalg.norm(arr)
+            return (arr / n).tolist() if n > 0 else arr.tolist()
+        except Exception as e:
+            print(f"Query embedding error: {e}")
+            raise
+
+    def embed_batch(self, texts: List[str], batch_size: int = 50) -> List[List[float]]:
+        out = []
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i: i + batch_size]
+            for text in batch:
+                out.append(self.embed_text(text))
+        return out
+
+    def embed_query_alias(self, query: str) -> List[float]:
+        return self.embed_query(query)
 
     @staticmethod
     def cosine_similarity(v1: List[float], v2: List[float]) -> float:
         a = np.array(v1, dtype=float)
         b = np.array(v2, dtype=float)
-        na = np.linalg.norm(a)
-        nb = np.linalg.norm(b)
+        na, nb = np.linalg.norm(a), np.linalg.norm(b)
         return float(np.dot(a, b) / (na * nb)) if na > 0 and nb > 0 else 0.0
 
 
-# GLOBAL SINGLETON
 _embedder = None
-_embedder_lock = threading.Lock()
 
 
 def get_embedder(model_name: str = None) -> EmbeddingService:
