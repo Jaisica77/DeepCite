@@ -13,34 +13,24 @@ export const Navigation = () => {
           <NavLink to="/" className="flex items-center space-x-2">
             <div className="w-8 h-8 bg-gradient-primary rounded-lg"></div>
             <span className="text-xl font-bold bg-gradient-primary bg-clip-text text-transparent">
-              RAG Optimizer
+              DeepCite
             </span>
           </NavLink>
 
-          {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-8">
-            <NavLink 
-              to="/upload" 
-              className="text-foreground/80 hover:text-foreground transition-smooth"
-            >
+            <NavLink to="/upload" className="text-foreground/80 hover:text-foreground transition-smooth">
               Upload
             </NavLink>
-            <NavLink 
-              to="/query" 
-              className="text-foreground/80 hover:text-foreground transition-smooth"
-            >
+            <NavLink to="/chat" className="text-foreground/80 hover:text-foreground transition-smooth">
+              Chat
+            </NavLink>
+            <NavLink to="/query" className="text-foreground/80 hover:text-foreground transition-smooth">
               Query
             </NavLink>
-            <NavLink 
-              to="/experiments" 
-              className="text-foreground/80 hover:text-foreground transition-smooth"
-            >
+            <NavLink to="/experiments" className="text-foreground/80 hover:text-foreground transition-smooth">
               Experiments
             </NavLink>
-            <NavLink 
-              to="/dashboard" 
-              className="text-foreground/80 hover:text-foreground transition-smooth"
-            >
+            <NavLink to="/dashboard" className="text-foreground/80 hover:text-foreground transition-smooth">
               Dashboard
             </NavLink>
             <Button variant="hero" size="default">
@@ -48,44 +38,26 @@ export const Navigation = () => {
             </Button>
           </div>
 
-          {/* Mobile Menu Button */}
-          <button
-            className="md:hidden p-2"
-            onClick={() => setIsOpen(!isOpen)}
-          >
+          <button className="md:hidden p-2" onClick={() => setIsOpen(!isOpen)}>
             {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
         </div>
 
-        {/* Mobile Navigation */}
         {isOpen && (
           <div className="md:hidden mt-4 pb-4 space-y-4">
-            <NavLink 
-              to="/upload" 
-              className="block text-foreground/80 hover:text-foreground transition-smooth"
-              onClick={() => setIsOpen(false)}
-            >
+            <NavLink to="/upload" className="block text-foreground/80 hover:text-foreground transition-smooth" onClick={() => setIsOpen(false)}>
               Upload
             </NavLink>
-            <NavLink 
-              to="/query" 
-              className="block text-foreground/80 hover:text-foreground transition-smooth"
-              onClick={() => setIsOpen(false)}
-            >
+            <NavLink to="/chat" className="block text-foreground/80 hover:text-foreground transition-smooth" onClick={() => setIsOpen(false)}>
+              Chat
+            </NavLink>
+            <NavLink to="/query" className="block text-foreground/80 hover:text-foreground transition-smooth" onClick={() => setIsOpen(false)}>
               Query
             </NavLink>
-            <NavLink 
-              to="/experiments" 
-              className="block text-foreground/80 hover:text-foreground transition-smooth"
-              onClick={() => setIsOpen(false)}
-            >
+            <NavLink to="/experiments" className="block text-foreground/80 hover:text-foreground transition-smooth" onClick={() => setIsOpen(false)}>
               Experiments
             </NavLink>
-            <NavLink 
-              to="/dashboard" 
-              className="block text-foreground/80 hover:text-foreground transition-smooth"
-              onClick={() => setIsOpen(false)}
-            >
+            <NavLink to="/dashboard" className="block text-foreground/80 hover:text-foreground transition-smooth" onClick={() => setIsOpen(false)}>
               Dashboard
             </NavLink>
             <Button variant="hero" size="default" className="w-full">
