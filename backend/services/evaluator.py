@@ -3,31 +3,26 @@ import os
 import re
 from typing import Dict, Any, List
 from dotenv import load_dotenv
+import google.generativeai as genai
 
-# Load environment variables from .env file
 load_dotenv()
 
-try:
-    from groq import Groq
-except ImportError:
-    Groq = None
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+genai.configure(api_key=GEMINI_API_KEY)
 
-# Configure Groq API
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+DEFAULT_MODEL = "gemini-1.5-flash"
 
 
 class RAGEvaluator:
-    """Service for evaluating RAG responses using Groq API"""
-    
-    def __init__(self, model_name: str = "llama-3.1-8b-instant"):
+    def __init__(self, model_name: str = DEFAULT_MODEL):
         self.model_name = model_name
-        if Groq and GROQ_API_KEY:
-            self.client = Groq(api_key=GROQ_API_KEY)
-            print(f"✓ Groq evaluator initialized with model: {model_name}")
+        if GEMINI_API_KEY:
+            self.model = genai.GenerativeModel(model_name)
+            print(f"Evaluator ready: {model_name}")
         else:
-            self.client = None
-            print("⚠ Groq evaluator not initialized - check GROQ_API_KEY in .env file")
-    
+            self.model = None
+            print("GEMINI_API_KEY not set — evaluator in fallback mode")
+
     def evaluate_response(
         self,
         query: str,
@@ -35,61 +30,29 @@ class RAGEvaluator:
         expected_answer: str = None,
         context_chunks: List[str] = None
     ) -> Dict[str, Any]:
-        """
-        Evaluate a RAG response using Groq
-        
-        Args:
-            query: Original query
-            generated_answer: Answer from RAG system
-            expected_answer: Ground truth answer (optional)
-            context_chunks: Retrieved context (optional)
-        
-        Returns:
-            Evaluation scores and feedback
-        """
-        if not self.client:
+        if not self.model:
             return self._fallback_evaluation(query, generated_answer, expected_answer)
-        
-        # Build evaluation prompt
+
         prompt = self._build_evaluation_prompt(
-            query, 
-            generated_answer, 
-            expected_answer,
-            context_chunks
+            query, generated_answer, expected_answer, context_chunks
         )
-        
+
         try:
-            chat_completion = self.client.chat.completions.create(
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are an expert evaluator for RAG systems. Provide precise numerical scores and clear feedback."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                model=self.model_name,
-                temperature=0.1,  # Low temperature for consistent evaluation
-                max_tokens=1000
+            response = self.model.generate_content(
+                prompt,
+                generation_config=genai.types.GenerationConfig(temperature=0.1)
             )
-            
-            response_text = chat_completion.choices[0].message.content
-            
-            # Parse evaluation
+            response_text = response.text
             scores = self._parse_evaluation(response_text)
-            
             return {
                 "scores": scores,
                 "feedback": response_text,
                 "evaluator_model": self.model_name
             }
-        
         except Exception as e:
             print(f"Evaluation error: {e}")
             return self._fallback_evaluation(query, generated_answer, expected_answer)
-    
+
     def _build_evaluation_prompt(
         self,
         query: str,
@@ -97,173 +60,95 @@ class RAGEvaluator:
         expected_answer: str = None,
         context_chunks: List[str] = None
     ) -> str:
-        """Build evaluation prompt"""
-        
         context_section = ""
         if context_chunks:
             context = "\n".join([f"[{i+1}] {chunk}" for i, chunk in enumerate(context_chunks)])
-            context_section = f"""
-RETRIEVED CONTEXT:
-{context}
-"""
-        
+            context_section = f"\nRETRIEVED CONTEXT:\n{context}\n"
+
         expected_section = ""
         if expected_answer:
-            expected_section = f"""
-EXPECTED ANSWER:
-{expected_answer}
-"""
-        
-        return f"""You are an expert evaluator for RAG (Retrieval-Augmented Generation) systems.
+            expected_section = f"\nEXPECTED ANSWER:\n{expected_answer}\n"
 
-Evaluate the following RAG response:
+        return f"""You are an expert evaluator for RAG systems.
 
-QUERY:
-{query}
+QUERY: {query}
 
-GENERATED ANSWER:
-{generated_answer}
+GENERATED ANSWER: {generated_answer}
 {expected_section}{context_section}
 
-Provide scores (0-100) for the following metrics:
+Score each metric from 0-100:
 
-1. RELEVANCE: How well does the answer address the query?
+1. RELEVANCE: Does the answer address the query?
 2. ACCURACY: Is the information factually correct?
-3. COMPLETENESS: Does it cover all important aspects?
+3. COMPLETENESS: Are all important aspects covered?
 4. COHERENCE: Is it well-structured and clear?
-5. FAITHFULNESS: Does it stay true to the context (no hallucinations)?
+5. FAITHFULNESS: Does it stay true to context (no hallucinations)?
 
-Respond in this format:
+Respond in this exact format:
 RELEVANCE: [score]/100
 ACCURACY: [score]/100
 COMPLETENESS: [score]/100
 COHERENCE: [score]/100
 FAITHFULNESS: [score]/100
-OVERALL: [average score]/100
+OVERALL: [average]/100
 
 FEEDBACK:
-[Brief explanation of strengths and weaknesses]
+[Brief explanation]
 """
-    
+
     def _parse_evaluation(self, text: str) -> Dict[str, float]:
-        """Parse evaluation scores from response"""
         scores = {
-            "relevance": 0.0,
-            "accuracy": 0.0,
-            "completeness": 0.0,
-            "coherence": 0.0,
-            "faithfulness": 0.0,
-            "overall": 0.0
+            "relevance": 0.0, "accuracy": 0.0, "completeness": 0.0,
+            "coherence": 0.0, "faithfulness": 0.0, "overall": 0.0
         }
-        
-        lines = text.split('\n')
-        for line in lines:
+        for line in text.split('\n'):
             line = line.strip().upper()
             if ':' in line:
                 metric, value = line.split(':', 1)
                 metric = metric.strip().lower()
-                
-                # Extract numeric score
                 numbers = re.findall(r'\d+', value)
-                if numbers:
-                    score = float(numbers[0])
-                    if metric in scores:
-                        scores[metric] = score
-        
-        # Calculate overall if not provided
+                if numbers and metric in scores:
+                    scores[metric] = float(numbers[0])
+
         if scores["overall"] == 0.0:
             scores["overall"] = sum([
-                scores["relevance"],
-                scores["accuracy"],
-                scores["completeness"],
-                scores["coherence"],
-                scores["faithfulness"]
+                scores["relevance"], scores["accuracy"], scores["completeness"],
+                scores["coherence"], scores["faithfulness"]
             ]) / 5.0
-        
         return scores
-    
-    def _fallback_evaluation(
-        self,
-        query: str,
-        generated_answer: str,
-        expected_answer: str = None
-    ) -> Dict[str, Any]:
-        """Simple fallback evaluation"""
-        # Basic heuristics
-        answer_length = len(generated_answer.split())
-        has_content = answer_length > 10
-        
-        base_score = 60.0 if has_content else 30.0
-        
-        scores = {
-            "relevance": base_score,
-            "accuracy": base_score,
-            "completeness": base_score,
-            "coherence": base_score,
-            "faithfulness": base_score,
-            "overall": base_score
-        }
-        
-        feedback = f"""[Fallback Evaluation Mode]
-Answer length: {answer_length} words
-Basic quality: {"Acceptable" if has_content else "Too short"}
 
-Note: Set GROQ_API_KEY environment variable for detailed AI evaluation.
-"""
-        
+    def _fallback_evaluation(self, query, generated_answer, expected_answer=None):
+        base = 60.0 if len(generated_answer.split()) > 10 else 30.0
+        scores = {k: base for k in ["relevance", "accuracy", "completeness", "coherence", "faithfulness", "overall"]}
         return {
             "scores": scores,
-            "feedback": feedback,
+            "feedback": "Set GEMINI_API_KEY for AI-powered evaluation.",
             "evaluator_model": "fallback"
         }
-    
-    def compare_pipelines(
-        self,
-        results: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
-        """
-        Compare multiple pipeline results
-        
-        Args:
-            results: List of evaluation results from different pipelines
-        
-        Returns:
-            Comparison summary with winner
-        """
+
+    def compare_pipelines(self, results: List[Dict[str, Any]]) -> Dict[str, Any]:
         if not results:
             return {"error": "No results to compare"}
-        
-        # Calculate aggregate scores
         comparisons = []
         for result in results:
             scores = result.get("scores", {})
             comparisons.append({
                 "pipeline_config": result.get("config", {}),
                 "overall_score": scores.get("overall", 0),
-                "relevance": scores.get("relevance", 0),
-                "accuracy": scores.get("accuracy", 0),
-                "completeness": scores.get("completeness", 0),
-                "coherence": scores.get("coherence", 0),
-                "faithfulness": scores.get("faithfulness", 0),
+                **{k: scores.get(k, 0) for k in ["relevance", "accuracy", "completeness", "coherence", "faithfulness"]}
             })
-        
-        # Sort by overall score
         comparisons.sort(key=lambda x: x["overall_score"], reverse=True)
-        
-        winner = comparisons[0] if comparisons else None
-        
         return {
-            "winner": winner,
+            "winner": comparisons[0] if comparisons else None,
             "all_results": comparisons,
             "total_pipelines": len(comparisons)
         }
 
 
-# Global evaluator instance
 _evaluator = None
 
-def get_evaluator(model_name: str = "llama-3.1-8b-instant") -> RAGEvaluator:
-    """Get or create evaluator instance"""
+
+def get_evaluator(model_name: str = DEFAULT_MODEL) -> RAGEvaluator:
     global _evaluator
     if _evaluator is None:
         _evaluator = RAGEvaluator(model_name)
