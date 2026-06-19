@@ -5,7 +5,7 @@ A comprehensive RAG (Retrieval-Augmented Generation) testing and optimization pl
 ## 🚀 Features
 
 ### Document Management
-- **Upload Documents**: Support for PDF, DOCX, and TXT files
+- **Upload Documents**: Support for PDF, DOCX, and TXT files 
 - **Document List**: View all uploaded documents with metadata (word count, character count, status)
 - **Document Deletion**: Remove documents from the system
 - **Real-time Updates**: Auto-refresh document lists and status
